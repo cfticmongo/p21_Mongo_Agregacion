@@ -8,11 +8,12 @@ function getRandomDate(start, end) {
     return new Date(start.getTime() + Math.random() * (end.getTime() - start.getTime()));
 }
 
-function getRandomActivities(numberActivities) {
+function getRandomSeveralActivities() {
     let selectedActivities = [];
-    for(let i = 0; i < numberActivities; i++) {
+    for(let j = 0; j < 3; j++) {
         selectedActivities.push(activities[Math.floor(Math.random() * activities.length)])
     }
+    return selectedActivities;
 }
 
 let clients = [];
@@ -22,7 +23,7 @@ for(let i = 0; i < 1500; i++) {
         name: names[Math.floor(Math.random() * names.length)],
         surname1: surnames[Math.floor(Math.random() * surnames.length)],
         surname2: surnames[Math.floor(Math.random() * surnames.length)],
-        activities: getRandomActivities(3),
+        activities: getRandomSeveralActivities(),
         subscriptionDate: getRandomDate(new Date(2015, 0, 1), new Date())
     })
 }
