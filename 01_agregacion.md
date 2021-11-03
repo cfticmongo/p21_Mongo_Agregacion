@@ -279,3 +279,148 @@ db.opiniones.aggregate([
 ])
 
 ```
+
+## Etapa $addFields
+
+Añadir campos a partir de los valores obtenidos de expresiones
+
+```
+use maraton
+
+db.resultados.insert([
+    {nombre: 'Juan', horaLlegada: new Date("2021-11-03T16:31:40")},
+    {nombre: 'Laura', horaLlegada: new Date("2021-11-03T15:43:27")},
+    {nombre: 'Sara', horaLlegada: new Date("2021-11-03T17:10:22")},
+    {nombre: 'Carlos', horaLlegada: new Date("2021-11-03T16:15:09")},
+])
+
+
+db.resultados.aggregate([
+    {$addFields: {tiempo: {$subtract: ["$horaLlegada", new Date("2021-11-03T12:00:00")]}}},
+    {$addFields: {horas: {$floor: {$mod: [{$divide: ["$tiempo", 60 * 60 * 1000]}, 24]}}}},
+    {$addFields: {minutos: {$floor: {$mod: [{$divide: ["$tiempo", 60 * 1000]}, 60]}}}},
+    {$addFields: {segundos: {$floor: {$mod: [{$divide: ["$tiempo", 1000]}, 60]}}}},
+    {$sort: {tiempo: 1}},
+    {$project: {nombre: 1, horas: 1, minutos: 1, segundos: 1, _id: 0}}
+])
+
+```
+
+## Etapa $skip
+
+Recibe un entero para saltar los n primeros documentos de la etapa (similar a skip())
+
+{$skip: <entero>}
+
+## Etapa $limit
+
+Recibe un entero para limitar los n documentos de la etapa (similar limit())
+
+{$limit: <entero>}
+
+## Etapa $merge
+
+Sirve para registrar los resultados de la operación de agregación a otra colección de otra base de datos
+(por tanto será la última etapa del pipe)
+
+```
+use maraton
+
+db.runners.aggregate([
+    {$group: {_id: "$age", total: {$sum: 1}}},
+    {$project: {age: "$_id", total: 1, _id: 0}},
+    {$merge: "resumen"} // Colección en la misma base de datos
+])
+
+db.resumen.find()
+{ "_id" : ObjectId("6182db50ff78b325181e6007"), "age" : 15, "total" : 10247 }
+{ "_id" : ObjectId("6182db50ff78b325181e6008"), "age" : 64, "total" : 10087 }
+{ "_id" : ObjectId("6182db50ff78b325181e6009"), "age" : 19, "total" : 10056 }
+{ "_id" : ObjectId("6182db50ff78b325181e600a"), "age" : 90, "total" : 9934 }
+{ "_id" : ObjectId("6182db50ff78b325181e600b"), "age" : 0, "total" : 9877 }
+...
+```
+
+Otro ejemplo a colección de otra base de datos y controlando la inserción de documentos
+
+```
+db.runners.createIndex({dni: 1},{unique: true})  // Exige índice único sobre el campo de control
+
+db.runners.aggregate([
+    {$match: {$and: [{age: {$gte: 40}},{age:{$lt: 41}}]}},
+    {$project: {name: 1, age: 1, dni: 1, _id: 0}},
+    {$merge: {
+        into: {db: "maratonMadrid", coll: "resumen4042"},
+        on: "dni",
+        whenMatched: "keepExisting",
+        whenNotMatched: "insert" // Solo insertará los nuevos docs
+    }}
+])
+```
+
+## Etapa $lookup
+
+Esta etapa permite utilizar en MongoDB un tipo de joins (left outer)
+
+Sintaxis
+{$lookup: {
+    from: <colección-externa>,
+    localField: <campo-colección-referencia>,
+    foreignField: <campo-colección-externa-referencia>,
+    as: <nombre-campo-de-salida (array)>
+}}
+
+
+```
+use shop4
+
+db.pedidos.insert([
+    {items: [
+        {codigo: "a01", precio: 12, cantidad: 2},
+        {codigo: "j02", precio: 10, cantidad: 4},
+    ]},
+    {items: [
+        {codigo: "j01", precio: 20, cantidad: 1}
+    ]},
+    {items: [
+        {codigo: "j01", precio: 20, cantidad: 4}
+    ]},
+])
+
+db.productos.insert([
+    {codigo: "a01", descripción: "Tuerca 14", stock: 100},
+    {codigo: "a02", descripción: "Tuerca 20", stock: 50},
+    {codigo: "j01", descripción: "Chapa 200", stock: 100},
+    {codigo: "j02", descripción: "Chapa 300", stock: 150},
+])
+
+```
+
+Caso de uso de agregación desde la colección pedidos para obtener
+los datos de cada producto vendido (de la colección productos)
+
+```
+db.pedidos.aggregate([
+    {$unwind: "$items"},
+    {$lookup: {
+        from: "productos",
+        localField: "items.codigo",
+        foreignField: "codigo",
+        as: "producto"
+    }},
+    {$unwind: "$producto"},
+    {$project: {
+        numeroPedido: "$_id",
+        producto: "$producto.codigo",
+        descripcion: "$producto.descripción",
+        cantidad: "$items.cantidad",
+        precio: "$items.precio",
+        _id: 0
+    }}
+])
+```
+
+{ "numeroPedido" : ObjectId("6182e44445b5fa4069845770"), "producto" : "a01", "descripcion" : "Tuerca 14", "cantidad" : 2, "precio" : 12 }
+{ "numeroPedido" : ObjectId("6182e44445b5fa4069845770"), "producto" : "j02", "descripcion" : "Chapa 300", "cantidad" : 4, "precio" : 10 }
+{ "numeroPedido" : ObjectId("6182e44445b5fa4069845771"), "producto" : "j01", "descripcion" : "Chapa 200", "cantidad" : 1, "precio" : 20 }
+{ "numeroPedido" : ObjectId("6182e44445b5fa4069845772"), "producto" : "j01", "descripcion" : "Chapa 200", "cantidad" : 4, "precio" : 20 }
