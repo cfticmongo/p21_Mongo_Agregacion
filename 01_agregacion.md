@@ -137,8 +137,145 @@ Por ejemplo, podemos obtener el número de participantes que se llaman igual y t
 use maraton
 
 db.runners.aggregate([
-    {$group: {_id: {nombre: "$name", edad: "$age"}, totalesMismoNombreMismaEdad: {$sum: 1}}}
-    {$project: {nombre: "$_id.nombre", edad: "$_id.edad", totalesMismoNombreMismaEdad: 1, _id: 0}}
+    {$group: {_id: {nombre: "$name", edad: "$age"}, totalesMismoNombreMismaEdad: {$sum: 1}}},
+    {$project: {nombre: "$_id.nombre", edad: "$_id.edad", totalesMismoNombreMismaEdad: 1, _id: 0}},
     {$sort: {totalesMismoNombreMismaEdad: -1}}
 ])
+```
+
+Para encontrar valores duplicados
+
+```
+use clinica
+db.empleados.insert({
+        nombre: "Juan",
+        "dni" : "27827756B" 
+})
+db.empleados.insert({
+        nombre: "Laura",
+        "dni" : "27827756B" // Añadimos un registro con dni duplicado
+})
+
+db.empleados.aggregate([
+    {$group: {_id: "$dni", contador: {$sum: 1}}},
+    {$sort: {contador: -1}}
+], {allowDiskUse: true})
+
+```
+Resultado
+{"_id" : "27827756B", "contador" : 2 } devolverá un doc de cada valor duplicado
+
+## Etapa $unwind
+
+Deconstruye un array en sus elementos.
+
+Set de datos
+
+```
+use shop2
+
+db.items.insert([
+    {nombre: "Camiseta", marca: "Nike", tallas: ["xs","s","m","l","xl","xxl"]},
+    {nombre: "Camiseta", marca: "Puma", tallas: ["xs","s","xxl"]},
+    {nombre: "Camiseta", marca: "Adidas", tallas: null},
+    {nombre: "Pantaln", marca: "Puma"}, 
+])
+
+```
+
+```
+db.items.aggregate([
+    {$unwind: "$tallas"}
+])
+
+db.items.aggregate([
+    {$unwind: {path: "$tallas", preserveNullAndEmptyArrays: true}}
+])
+```
+
+{
+        "_id" : ObjectId("6181984133792f1bcfeaad40"),
+        "name" : "Juan",
+        "surname1" : "Novo",
+        "surname2" : "Fernández",
+        "activities" : [
+                "step",
+                "pesas",
+                "aquagym"
+        ],
+        "subscriptionDate" : ISODate("2015-06-09T01:04:18.570Z")
+}
+
+
+Por ejemplo ver el número de clientes que están inscritos a cada actividad
+
+```
+use gimnasio2
+
+db.clientes.aggregate([
+    {$unwind: "$activities"},
+    {$group: {_id: "$activities", totalClientes: {$sum: 1}}},
+    {$project: {actividad: "$_id", totalClientes: 1, _id: 0}},
+    {$sort: {totalClientes: -1}}
+])
+```
+
+{ "totalClientes" : 663, "actividad" : "aquagym" }
+{ "totalClientes" : 661, "actividad" : "esgrima" }
+{ "totalClientes" : 653, "actividad" : "cardio" }
+{ "totalClientes" : 644, "actividad" : "pesas" }
+{ "totalClientes" : 639, "actividad" : "step" }
+{ "totalClientes" : 625, "actividad" : "padel" }
+{ "totalClientes" : 615, "actividad" : "tenis" }
+
+## Etapa $match
+
+Match realiza un filtro de documentos de la etapa anterior (colección si es la primera etapa) mediante un documento
+de consulta con la misma sintaxis de los métodos find()
+
+Por ejemplo para buscar duplicados, podemos segmentar las operaciones para evitar desbordar la memoria
+en colecciones muy grandes.
+
+```
+use maraton
+db.runners.insert({
+        "name" : "Gonzalo",
+        "surname1" : "Gonzalez",
+        "surname2" : "Gonzalez",
+        "age" : 96,
+        "dni" : "27827756B"
+})
+
+db.runners.aggregate([
+    {$match: {age: 96}}, // Un doc de consulta con la misma sintaxis de find() findOne() 
+    {$group: {_id: "$dni", contador: {$sum: 1}}},
+    {$match: {contador: {$gt: 1}}},
+    {$sort: {contador: -1}}
+])
+```
+
+Otro ejemplo con índices de texto
+
+```
+use shop3
+
+db.opiniones.insert([
+    {nombre: "Nike revolution", user: "00012", opinion: "buen servicio pero producto en mal estado"},
+    {nombre: "Nike revolution", user: "00013", opinion: "muy satisfecho con la compra"},
+    {nombre: "Nike revolution", user: "00014", opinion: "muy mal, tuve que devolverlas"},
+    {nombre: "Adidas Peace", user: "00014", opinion: "perfecto en todos los sentidos"},
+    {nombre: "Adidas Peace", user: "00013", opinion: "muy bien, muy contento"},
+    {nombre: "Adidas Peace", user: "00012", opinion: "mal, no me han gustado"},
+    {nombre: "Nike revolution", user: "00015", opinion: "mal, no volver"},
+])
+
+db.opiniones.createIndex({opinion: "text"})
+
+db.opiniones.aggregate([
+    {$match: {$text: {$search: "mal"}}},
+    {$group: {_id: "$nombre", malasOpiniones: {$sum: 1}}},
+    {$project: {producto: "$_id", malasOpiniones: 1, _id: 0}},
+    {$sort: {malasOpiniones: -1}}
+])
+
 ```
